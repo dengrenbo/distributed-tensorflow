@@ -7,11 +7,13 @@ from util.RedisHelper import RedisHelper
 import kubernetes
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+import logging
 
 class TrainHandler(tornado.web.RequestHandler):
     @tornado.web.asynchronous
     def get(self):
         print 'GET'
+        logging.info('GET stub')
         self.finish()
 
     def parse(self, data):
@@ -44,12 +46,15 @@ class TrainHandler(tornado.web.RequestHandler):
             for i in xrange(workCount):
                 body = self.genV1Service(uid, workType, i, workCount)
                 print body
+                logging.info("create service body: " + str(body))
                 try:
                     print '='*10 
                     api_response = api_instance.create_namespaced_service(namespace, body)
                     print api_response
+                    logging.info("service response: " + str(api_response))
                 except ApiException as e:
                     print("Exception when calling CoreV1Api->create_namespaced_service: %s\n" % e)
+                    logging.info("Exception when calling CoreV1Api->create_namespaced_service: %s\n" % e)
                     raise
 
     def genV1Job(self, uid, workType, seq, count, info, ps, workers):
@@ -94,7 +99,9 @@ class TrainHandler(tornado.web.RequestHandler):
         ps_hosts = ["-".join(["tf", str(uid), "ps", str(i), str(ps_count)])+":"+svcPort for i in xrange(ps_count)]
         worker_hosts = ["-".join(["tf", str(uid), "worker", str(i), str(worker_count)])+":"+svcPort for i in xrange(worker_count)]
         print "ps: " + str(ps_hosts)
+        logging.info("ps: " + str(ps_hosts))
         print "worker: " + str(worker_hosts)
+        logging.info("worker: " + str(worker_hosts))
         for workType in runInfo:
             count = runInfo.get(workType, 1)
             for i in xrange(count):
@@ -104,8 +111,10 @@ class TrainHandler(tornado.web.RequestHandler):
                     namespace = ApiConfig().get("namespace", info.get("type", "tensorflow"))
                     api_response = api_instance.create_namespaced_job(namespace, body)
                     print api_response
+                    logging.info("create job: " + str(api_response))
                 except ApiException as e:
                     print("Exception when calling BatchV1Api->create_namespaced_job: %s\n" % e)
+                    logging.info("Exception when calling BatchV1Api->create_namespaced_job: %s\n" % e)
                     raise
         return ps_hosts, worker_hosts
 
@@ -129,7 +138,9 @@ class TrainHandler(tornado.web.RequestHandler):
     def post(self):
         print "POST"
         print "data: " + str(self.request.body)
+        logging.info("POST data: " + str(self.request.body))
         info = self.parse(self.request.body)
         print "parse data: " + str(info)
+        logging.info("parse data: " + str(info))
         self.submit(info)
         self.finish()

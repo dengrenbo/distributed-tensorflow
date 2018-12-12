@@ -1,7 +1,14 @@
 {
     "type": "tensorflow",
+    "version": "1.5.0",
     "file": "/xxx/",
+    "main": "start.py",
+    "extra-args": {
+        "--abc": "abc",
+        "--xyz": "xyz
+    },
     "data": "/yyy",
+    "export": "/xxx",
     "resource": {
         "cpu": 2,
         "mem": "4g",

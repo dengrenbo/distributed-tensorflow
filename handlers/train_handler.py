@@ -80,7 +80,8 @@ class TrainHandler(tornado.web.RequestHandler):
             tempSpec.metadata = tempMetaBody
             containerBody = kubernetes.client.V1Container(name=tfId)
             volBody = kubernetes.client.V1Volume(name="glusterfsvol")
-            gfsVol = kubernetes.client.V1GlusterfsVolumeSource(endpoints="glusterfs-cluster", path="gv1/good/"+self.basicUsername)
+            gfsPath = ApiConfig().get("gfs", "path")
+            gfsVol = kubernetes.client.V1GlusterfsVolumeSource(endpoints="glusterfs-cluster", path="gv1/{0}".format(gfsPath)+self.basicUsername)
             volBody.glusterfs = gfsVol
             tempInnerSpec = kubernetes.client.V1PodSpec(containers=[containerBody], volumes=[volBody])
             tempInnerSpec.restart_policy = "Never"

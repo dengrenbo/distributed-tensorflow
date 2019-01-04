@@ -37,6 +37,9 @@ timeout = 10
 web = http://192.168.11.39:14000
 namenode = hdfs://192.168.11.39
 
+[gfs]
+path = good
+
 [event]
 pool = 4
 ps_key = ps_hash

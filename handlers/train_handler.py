@@ -45,7 +45,7 @@ class TrainHandler(tornado.web.RequestHandler):
         config.load_kube_config(authFile if authFile else None)
         configuration = kubernetes.client.Configuration()
         api_instance = kubernetes.client.CoreV1Api(kubernetes.client.ApiClient(configuration))
-        namespace = 'default'
+        namespace = ApiConfig().get("namespace", "tensorflow")
         for workType in runInfo:
             workCount = int(runInfo.get(workType, 1))
             for i in xrange(workCount):
@@ -62,7 +62,7 @@ class TrainHandler(tornado.web.RequestHandler):
                     logging.info("Exception when calling CoreV1Api->create_namespaced_service: %s\n" % e)
                     raise
 
-    def genV1Job(self, uid, workType, seq, count, info, ps, workers, chief):
+    def genV1Job(self, uid, workType, seq, count, info, ps, workers, chief, conCount):
         try:
             print 'gen v1 job ......'
             tfId = "-".join(["tf", str(uid), workType, str(seq), str(count)])
@@ -90,15 +90,18 @@ class TrainHandler(tornado.web.RequestHandler):
             containerBody.image = ApiConfig().get("image", "tensorflow")
             hdfsUrl = ApiConfig().get("hdfs", "web")
             hdfsNN = ApiConfig().get("hdfs", "namenode")
+            ps = (ps if ps != "" else "none")
+            chief = (chief if chief != "" else "none")
             containerBody.command = ["/notebooks/entry.sh", workType, str(seq), ps, workers, info.get("file", ""),
-                                     info.get("data", "/notebooks"), info.get("export", "/tmp"), hdfsUrl, hdfsNN,
-                                     info.get("main", ""), chief]
+                                     info.get("data", "/notebooks"), ','.join(info.get("export", "/tmp")), hdfsUrl, hdfsNN,
+                                     info.get("main", ""), chief, str(conCount), ApiConfig().get("sync", "zk"), str(uid)]
             portBody = kubernetes.client.V1ContainerPort(ApiConfig().getint("k8s", "headless_port"))
             containerBody.ports = [portBody]
             volMount = kubernetes.client.V1VolumeMount(mount_path="/mnt", name="glusterfsvol")
             containerBody.volume_mounts = [volMount]
             tempSpec.spec = tempInnerSpec
             specBody = kubernetes.client.V1JobSpec(template=tempSpec)
+            specBody.backoff_limit = 0
             body.spec = specBody
             print 'gen v1 job ok ......'
             return body
@@ -117,7 +120,7 @@ class TrainHandler(tornado.web.RequestHandler):
         svcPort = ApiConfig().get("k8s", "headless_port")
         ps_hosts = ["-".join(["tf", str(uid), "ps", str(i), str(ps_count)])+":"+svcPort for i in xrange(ps_count)]
         worker_hosts = ["-".join(["tf", str(uid), "worker", str(i), str(worker_count)])+":"+svcPort for i in xrange(worker_count)]
-        chief_host = "-".join(["tf", str(uid), "chief", str(i), str(chief_count)])+":"+svcPort
+        chief_host = "-".join(["tf", str(uid), "chief", str(i), str(chief_count)])+":"+svcPort if chief_count != 0 else ""
         print "ps: " + str(ps_hosts)
         logging.info("ps: " + str(ps_hosts))
         print "worker: " + str(worker_hosts)
@@ -125,11 +128,13 @@ class TrainHandler(tornado.web.RequestHandler):
         print "chief: " + str(chief_host)
         logging.info("chief: " + str(chief_host))
 
+        containerCount = ps_count + worker_count + chief_count
+        print '========= containerCount: ' + str(containerCount)
         for workType in runInfo:
             count = int(runInfo.get(workType, 0))
             for i in xrange(count):
                 try:
-                    body = self.genV1Job(uid, workType, i, count, info, ",".join(ps_hosts), ",".join(worker_hosts), chief_host)
+                    body = self.genV1Job(uid, workType, i, count, info, ",".join(ps_hosts), ",".join(worker_hosts), chief_host, containerCount)
                     print body
                     namespace = ApiConfig().get("namespace", info.get("type", "tensorflow"))
                     api_response = api_instance.create_namespaced_job(namespace, body)
@@ -139,15 +144,15 @@ class TrainHandler(tornado.web.RequestHandler):
                     print("Exception when calling BatchV1Api->create_namespaced_job: %s\n" % e)
                     logging.info("Exception when calling BatchV1Api->create_namespaced_job: %s\n" % e)
                     raise
-        return ps_hosts, worker_hosts
+        return ps_hosts, worker_hosts, chief_host
 
     def submit(self, info):
         uid = uuid.uuid1()
         self.createService(str(uid), info["detail"])
-        ps_hosts, worker_hosts = self.createJob(uid, info)
+        ps_hosts, worker_hosts, chief_host = self.createJob(uid, info)
         #self.storeInfo(uid, ps_hosts, worker_hosts)
-        tf_hosts = ps_hosts + worker_hosts
-        self.write(json.dumps([pod.split(":")[0] for pod in tf_hosts]))
+        tf_hosts = ps_hosts + worker_hosts + [chief_host]
+        self.write(json.dumps([pod.split(":")[0] for pod in tf_hosts if pod != ""]))
 
     def storeInfo(self, uid, ps_hosts, worker_hosts):
         info = {"ps": ps_hosts, "worker": worker_hosts, "status": "running"}

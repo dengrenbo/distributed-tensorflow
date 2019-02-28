@@ -46,3 +46,8 @@ ps_key = ps_hash
 worker_key = worker_hash
 delete_queue = tobe_delete
 handlers = CleanJobHandler
+
+[sync]
+path = /sync/
+timeout = 60
+zk = 10.105.71.241:2181
